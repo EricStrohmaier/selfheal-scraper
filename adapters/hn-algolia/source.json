@@ -1,0 +1,34 @@
+{
+  "key": "hn-algolia/story-search",
+  "intent": "Hacker News story search results for a query: title, outbound link, author, points, comment count and when it was posted.",
+  "entry_url": "https://hn.algolia.com/?query=postgres&type=story",
+  "url_pattern": "^https://news\\.ycombinator\\.com/item\\?id=\\d+$",
+  "cadence": "1 day",
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["id", "title", "author", "points", "commentCount", "postedAt", "itemUrl"],
+    "properties": {
+      "id": { "type": "string", "pattern": "^[0-9]+$" },
+      "title": { "type": "string", "minLength": 1 },
+      "url": {
+        "type": ["string", "null"],
+        "description": "null for Ask HN and other text posts, which have no outbound link"
+      },
+      "author": { "type": ["string", "null"] },
+      "points": { "type": "integer", "minimum": 0 },
+      "commentCount": { "type": "integer", "minimum": 0 },
+      "postedAt": { "type": "string", "minLength": 1 },
+      "itemUrl": { "type": "string", "pattern": "^https://news\\.ycombinator\\.com/item\\?id=[0-9]+$" }
+    }
+  },
+  "required_fields": ["id", "title", "author", "points", "postedAt", "itemUrl"],
+  "fetch_plan": {
+    "tier": "http",
+    "urlTemplate": "https://hn.algolia.com/api/v1/search?query={key}&tags=story&hitsPerPage=20",
+    "method": "GET",
+    "headers": {
+      "accept": "application/json"
+    }
+  }
+}

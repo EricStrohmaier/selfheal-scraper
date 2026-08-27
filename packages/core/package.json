@@ -1,0 +1,15 @@
+{
+  "name": "@forge/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "acorn": "^8.14.0",
+    "ajv": "^8.17.1",
+    "esbuild": "^0.24.2",
+    "linkedom": "^0.18.9"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "forge",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "test": "node --test --experimental-test-module-mocks=false \"packages/core/test/*.test.ts\" \"adapters/*/test/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}

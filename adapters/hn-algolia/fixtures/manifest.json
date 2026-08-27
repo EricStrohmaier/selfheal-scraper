@@ -1,0 +1,236 @@
+[
+  {
+    "name": "postgres",
+    "url": "https://hn.algolia.com/api/v1/search?query=postgres&tags=story&hitsPerPage=20",
+    "tier": "http",
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "bodyFile": "postgres.body.gz",
+    "expected": [
+      {
+        "id": "18717168",
+        "title": "Bye Bye Mongo, Hello Postgres",
+        "url": "https://www.theguardian.com/info/2018/nov/30/bye-bye-mongo-hello-postgres",
+        "author": "philliphaydon",
+        "points": 1562,
+        "commentCount": 417,
+        "postedAt": "2018-12-19T17:08:53Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=18717168"
+      },
+      {
+        "id": "19817531",
+        "title": "Common mistakes in PostgreSQL",
+        "url": "https://wiki.postgresql.org/wiki/Don%27t_Do_This",
+        "author": "kawera",
+        "points": 1084,
+        "commentCount": 253,
+        "postedAt": "2019-05-03T11:52:08Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=19817531"
+      },
+      {
+        "id": "44073588",
+        "title": "Postgres IDE in VS Code",
+        "url": "https://techcommunity.microsoft.com/blog/adforpostgresql/announcing-a-new-ide-for-postgresql-in-vs-code-from-microsoft/4414648",
+        "author": "Dowwie",
+        "points": 1040,
+        "commentCount": 407,
+        "postedAt": "2025-05-23T15:12:44Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=44073588"
+      },
+      {
+        "id": "15408800",
+        "title": "PostgreSQL 10 Released",
+        "url": "https://www.postgresql.org/about/news/1786/",
+        "author": "Tostino",
+        "points": 1024,
+        "commentCount": 296,
+        "postedAt": "2017-10-05T13:06:45Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=15408800"
+      },
+      {
+        "id": "9509870",
+        "title": "Postgres gets support for upsert",
+        "url": "http://git.postgresql.org/gitweb/?p=postgresql.git;a=commit;h=168d5805e4c08bed7b95d351bf097cff7c07dd65",
+        "author": "anarazel",
+        "points": 1003,
+        "commentCount": 109,
+        "postedAt": "2015-05-08T03:48:44Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=9509870"
+      },
+      {
+        "id": "37020610",
+        "title": "Postgres Language Server",
+        "url": "https://github.com/supabase/postgres_lsp",
+        "author": "kiwicopple",
+        "points": 963,
+        "commentCount": 119,
+        "postedAt": "2023-08-06T10:26:54Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=37020610"
+      },
+      {
+        "id": "15306398",
+        "title": "New in PostgreSQL 10",
+        "url": "https://wiki.postgresql.org/wiki/New_in_postgres_10",
+        "author": "okket",
+        "points": 962,
+        "commentCount": 249,
+        "postedAt": "2017-09-21T19:02:40Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=15306398"
+      },
+      {
+        "id": "28705699",
+        "title": "PostgreSQL 14",
+        "url": "https://www.postgresql.org/about/news/postgresql-14-released-2318/",
+        "author": "jkatz05",
+        "points": 950,
+        "commentCount": 286,
+        "postedAt": "2021-09-30T12:50:32Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=28705699"
+      },
+      {
+        "id": "49063754",
+        "title": "PGSimCity - How PostgreSQL Works",
+        "url": "https://nikolays.github.io/PGSimCity/",
+        "author": "jonbaer",
+        "points": 930,
+        "commentCount": 92,
+        "postedAt": "2026-07-27T00:19:04Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=49063754"
+      },
+      {
+        "id": "33067962",
+        "title": "Postgres WASM",
+        "url": "https://supabase.com/blog/postgres-wasm",
+        "author": "kiwicopple",
+        "points": 887,
+        "commentCount": 185,
+        "postedAt": "2022-10-03T14:25:58Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=33067962"
+      },
+      {
+        "id": "21484215",
+        "title": "System design hack: Postgres is a great pub/sub and job server",
+        "url": "https://layerci.com/blog/postgres-is-the-answer/",
+        "author": "colinchartier",
+        "points": 852,
+        "commentCount": 158,
+        "postedAt": "2019-11-08T17:05:55Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=21484215"
+      },
+      {
+        "id": "27482243",
+        "title": "Do you really need Redis? How to get away with just PostgreSQL",
+        "url": "https://spin.atomicobject.com/2021/02/04/redis-postgresql/",
+        "author": "hyzyla",
+        "points": 841,
+        "commentCount": 472,
+        "postedAt": "2021-06-12T06:57:14Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=27482243"
+      },
+      {
+        "id": "30018197",
+        "title": "Free Postgres databases for small projects",
+        "url": "https://fly.io/blog/free-postgres/",
+        "author": "mikeyhew",
+        "points": 841,
+        "commentCount": 223,
+        "postedAt": "2022-01-21T01:52:40Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=30018197"
+      },
+      {
+        "id": "48841676",
+        "title": "Postgres rewritten in Rust, now passing 100% of the Postgres regression tests",
+        "url": "https://github.com/malisper/pgrust",
+        "author": "SweetSoftPillow",
+        "points": 832,
+        "commentCount": 729,
+        "postedAt": "2026-07-09T06:18:19Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=48841676"
+      },
+      {
+        "id": "36393030",
+        "title": "PostgreSQL reconsiders its process-based model",
+        "url": "https://lwn.net/SubscriberLink/934940/3abb2d4086680b78/",
+        "author": "todsacerdoti",
+        "points": 825,
+        "commentCount": 372,
+        "postedAt": "2023-06-19T16:33:04Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=36393030"
+      },
+      {
+        "id": "13610146",
+        "title": "RethinkDB versus PostgreSQL: my personal experience",
+        "url": "http://blog.sagemath.com/2017/02/09/rethinkdb-vs-postgres.html",
+        "author": "williamstein",
+        "points": 822,
+        "commentCount": 328,
+        "postedAt": "2017-02-09T19:40:03Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=13610146"
+      },
+      {
+        "id": "32498435",
+        "title": "Learn Postgres at the Playground – Postgres compiled to WASM running in browser",
+        "url": "https://www.crunchydata.com/blog/learn-postgres-at-the-playground",
+        "author": "samwillis",
+        "points": 814,
+        "commentCount": 171,
+        "postedAt": "2022-08-17T16:28:45Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=32498435"
+      },
+      {
+        "id": "9178773",
+        "title": "Goodbye MongoDB, Hello PostgreSQL",
+        "url": "http://developer.olery.com/blog/goodbye-mongodb-hello-postgresql/",
+        "author": "YorickPeterse",
+        "points": 802,
+        "commentCount": 374,
+        "postedAt": "2015-03-10T16:51:05Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=9178773"
+      },
+      {
+        "id": "24531085",
+        "title": "DuckDB – An embeddable SQL database like SQLite, but supports Postgres features",
+        "url": "https://duckdb.org/",
+        "author": "goranmoomin",
+        "points": 801,
+        "commentCount": 160,
+        "postedAt": "2020-09-20T00:02:36Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=24531085"
+      },
+      {
+        "id": "36808296",
+        "title": "Fly.io Postgres cluster down for 3 days, no word from them about it",
+        "url": "https://webcache.googleusercontent.com/search?q=cache:2T9NpG8thZgJ:https://community.fly.io/t/service-interruption-cant-destroy-machine-deploy-or-restart/14227&cd=9&hl=en&ct=clnk&gl=au",
+        "author": "burnerbob",
+        "points": 797,
+        "commentCount": 477,
+        "postedAt": "2023-07-20T23:42:10Z",
+        "itemUrl": "https://news.ycombinator.com/item?id=36808296"
+      }
+    ]
+  },
+  {
+    "name": "typescript",
+    "url": "https://hn.algolia.com/api/v1/search?query=typescript&tags=story&hitsPerPage=20",
+    "tier": "http",
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "bodyFile": "typescript.body.gz",
+    "expected": null
+  },
+  {
+    "name": "webassembly",
+    "url": "https://hn.algolia.com/api/v1/search?query=webassembly&tags=story&hitsPerPage=20",
+    "tier": "http",
+    "statusCode": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "bodyFile": "webassembly.body.gz",
+    "expected": null
+  }
+]
