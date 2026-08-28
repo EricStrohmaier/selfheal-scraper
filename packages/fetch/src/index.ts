@@ -19,8 +19,16 @@ import { httpFetch } from './http.ts'
 import type { FetchOutcome, FetchRequest, Tier } from './types.ts'
 
 export { classifyResponse, type BlockedVerdict } from './blocked.ts'
-export { httpFetch, MAX_BODY_BYTES } from './http.ts'
-export { browserFetch, browserAvailable, closeBrowser, type BrowserOptions } from './browser.ts'
+export { httpFetch, DEFAULT_MIN_INTERVAL_MS, MAX_BODY_BYTES } from './http.ts'
+export {
+  browserFetch,
+  browserAvailable,
+  chromiumExecutablePath,
+  proxyConfig,
+  closeBrowser,
+  type BrowserOptions,
+  type ProxyConfig,
+} from './browser.ts'
 export type { FetchOutcome, FetchRequest, Tier } from './types.ts'
 
 /** `source.fetch_hints`, passed through unchanged as the plan requires. */
@@ -31,6 +39,8 @@ export type FetchHints = {
   consentSelectors?: string[]
   autoScroll?: boolean
   timeoutMs?: number
+  /** minimum gap between requests to the same host, from the site's robots.txt Crawl-delay */
+  minIntervalMs?: number
   /** set false to pin a source to its planned tier and never climb */
   allowEscalation?: boolean
 }
@@ -66,6 +76,7 @@ export async function executeFetchPlan(
     headers: { ...(plan.headers ?? {}), ...(hints.headers ?? {}) },
     body: plan.body,
     timeoutMs: hints.timeoutMs,
+    minIntervalMs: hints.minIntervalMs,
     signal: options.signal,
     waitFor: plan.waitFor,
   }

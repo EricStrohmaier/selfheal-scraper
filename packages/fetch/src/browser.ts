@@ -63,6 +63,36 @@ export type BrowserOptions = {
   autoScroll?: boolean
 }
 
+/**
+ * Where the Chromium binary lives, when it is not where playwright expects.
+ *
+ * playwright pins an exact browser build per release, so a host that ships a
+ * pre-installed Chromium from a different build fails with "Executable doesn't exist"
+ * even though a perfectly good browser is sitting right there. CI images and sandboxes
+ * do this routinely. `CHROMIUM_EXECUTABLE_PATH` points at the real binary and skips the
+ * download; unset, playwright resolves normally.
+ */
+export function chromiumExecutablePath(): string | undefined {
+  return process.env['CHROMIUM_EXECUTABLE_PATH'] || undefined
+}
+
+export type ProxyConfig = { server: string; bypass?: string }
+
+/**
+ * Outbound proxy for the browser tier, from the standard env vars.
+ *
+ * undici reads HTTPS_PROXY on its own; Chromium does not — it has to be told at launch,
+ * and without it every navigation fails with ERR_CONNECTION_RESET while the http tier
+ * carries on working. That asymmetry is confusing enough to be worth handling here rather
+ * than in each caller. NO_PROXY is passed through as the bypass list.
+ */
+export function proxyConfig(): ProxyConfig | undefined {
+  const server = process.env['HTTPS_PROXY'] ?? process.env['https_proxy'] ?? process.env['HTTP_PROXY'] ?? process.env['http_proxy']
+  if (!server) return undefined
+  const bypass = process.env['NO_PROXY'] ?? process.env['no_proxy']
+  return bypass ? { server, bypass } : { server }
+}
+
 async function launch(): Promise<Browser> {
   if (browser?.isConnected()) return browser
   if (launching) return launching
@@ -71,8 +101,12 @@ async function launch(): Promise<Browser> {
     const playwright = (await import('playwright')) as unknown as {
       chromium: { launch(options: unknown): Promise<Browser> }
     }
+    const executablePath = chromiumExecutablePath()
+    const proxy = proxyConfig()
     const launched = await playwright.chromium.launch({
       headless: true,
+      ...(executablePath ? { executablePath } : {}),
+      ...(proxy ? { proxy } : {}),
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
       // The worker installs its own signal handlers; letting playwright tear the browser
       // down first turns a graceful shutdown into a pile of failed jobs.

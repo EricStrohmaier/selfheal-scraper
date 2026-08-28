@@ -22,7 +22,7 @@ import {
 import type { executeFetchPlan, ExecuteResult } from '@forge/fetch'
 
 import { runAgent, COMPILE_ITERATION_CAP, REPAIR_ITERATION_CAP } from '../src/agent.ts'
-import { costUsd, PRICING, type CompleteRequest, type ModelClient, type ModelResponse } from '../src/model.ts'
+import type { CompleteRequest, ModelClient, ModelResponse } from '../src/model.ts'
 import { step } from '../src/worker.ts'
 import { outlinePage } from '../src/outline.ts'
 import { executeTool, TOOL_DEFINITIONS } from '../src/tools.ts'
@@ -151,17 +151,6 @@ async function seedFixtures(count = 3, body = PAYLOAD): Promise<string[]> {
 }
 
 const PLAN = { tier: 'http' as const, urlTemplate: 'https://example.test/items' }
-
-describe('cost accounting', () => {
-  test('opus-5 is priced at $5/$25 per million tokens', () => {
-    assert.deepEqual(PRICING['claude-opus-5'], { inputPerMTok: 5, outputPerMTok: 25 })
-    assert.equal(costUsd('claude-opus-5', 1_000_000, 1_000_000), 30)
-  })
-
-  test('an unknown model reports null rather than a wrong number', () => {
-    assert.equal(costUsd('some-future-model', 1000, 1000), null)
-  })
-})
 
 describe('the tool allowlist is exactly section 9', () => {
   test('five tools, no more', () => {
@@ -427,9 +416,9 @@ describe('the compile loop', { skip }, () => {
     ])
     await runAgent({ db, model, source: await source(), compileRunId, kind: 'compile', fetcher: fakeFetcher() })
 
-    const followUp = model.requests[1]?.messages.at(-1)
-    assert.equal(followUp?.role, 'user')
-    assert.equal((followUp?.content as unknown[]).length, 2)
+    const followUp = model.requests[1]?.turns.at(-1)
+    assert.equal(followUp?.role, 'tool_results')
+    assert.equal(followUp?.role === 'tool_results' ? followUp.results.length : 0, 2)
   })
 })
 
@@ -461,7 +450,8 @@ describe('the repair loop', { skip }, () => {
       fetcher: fakeFetcher(),
     })
 
-    const opening = String(model.requests[0]?.messages[0]?.content)
+    const first = model.requests[0]?.turns[0]
+    const opening = first?.role === 'user' ? first.text : ''
     assert.match(opening, /items come from \$\.items/)
     assert.match(opening, /required-field-null-rate/)
     assert.match(opening, /Fields going null: title/)

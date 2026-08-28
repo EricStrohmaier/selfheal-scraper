@@ -8,6 +8,8 @@ export type FetchRequest = {
   headers?: Record<string, string>
   body?: string
   timeoutMs?: number
+  /** minimum gap between requests to the same host; see politeDelay */
+  minIntervalMs?: number
   signal?: AbortSignal
   /** browser tier only — a selector to wait for before reading the DOM */
   waitFor?: string

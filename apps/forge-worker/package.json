@@ -8,9 +8,13 @@
     "@forge/core": "workspace:*",
     "@forge/db": "workspace:*",
     "@forge/fetch": "workspace:*",
-    "linkedom": "^0.18.9"
+    "linkedom": "^0.18.9",
+    "openai": "^6.9.0"
   },
   "devDependencies": {
     "drizzle-orm": "^0.38.3"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.49.1"
   }
 }

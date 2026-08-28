@@ -5,6 +5,7 @@
  * ranks finding a JSON endpoint as the highest-value thing the compile agent does.
  */
 
+import { brotliDecompressSync, gunzipSync, inflateSync } from 'node:zlib'
 import { request, Agent, interceptors } from 'undici'
 
 import { classifyResponse } from './blocked.ts'
@@ -30,13 +31,75 @@ const DEFAULT_HEADERS: Record<string, string> = {
   'upgrade-insecure-requests': '1',
 }
 
-// undici v7 handles redirects with a dispatcher interceptor rather than a per-request
-// option. Capped at 5: a redirect chain longer than that is a loop or a consent wall.
+// Two interceptors, both load-bearing.
+//
+// `decompress` is not optional. `undici.request` does NOT decompress response bodies on
+// its own — unlike `fetch` — so sending `accept-encoding: gzip` and then reading the body
+// as utf8 yields binary garbage. Most of the web is gzipped, so without this almost every
+// real page arrives as noise: the adapter extracts nothing, the challenge detector calls
+// it blocked, and nothing in the stack says "this is compressed".
+//
+// `redirect` because undici v7 moved redirects off the per-request options. Capped at 5:
+// a longer chain is a loop or a consent wall.
 const agent = new Agent({
   keepAliveTimeout: 10_000,
   keepAliveMaxTimeout: 30_000,
   connect: { timeout: 10_000 },
-}).compose(interceptors.redirect({ maxRedirections: 5 }))
+})
+  .compose(interceptors.redirect({ maxRedirections: 5 }))
+
+/**
+ * Decode the body according to `content-encoding`.
+ *
+ * undici ships a `decompress` interceptor, but it is flagged experimental and prints a
+ * warning on every request — on the hot path of a worker that runs unattended, that is
+ * noise that would mask real warnings. This is the same job in fifteen lines against a
+ * stable API.
+ *
+ * A body that claims an encoding and then fails to decode is returned as-is rather than
+ * thrown away: a mislabelled response is still better evidence than nothing.
+ */
+function decode(raw: Buffer, contentEncoding: string | undefined): string {
+  const encoding = (contentEncoding ?? '').trim().toLowerCase()
+  try {
+    if (encoding === 'gzip' || encoding === 'x-gzip') return gunzipSync(raw).toString('utf8')
+    if (encoding === 'deflate') return inflateSync(raw).toString('utf8')
+    if (encoding === 'br') return brotliDecompressSync(raw).toString('utf8')
+  } catch {
+    // fall through
+  }
+  return raw.toString('utf8')
+}
+
+/**
+ * Politeness: a minimum gap between requests to the same host.
+ *
+ * Nothing else in the system paces itself — the queue claims jobs as fast as it can, and
+ * a source with fifty item URLs would otherwise hit one host fifty times in a second.
+ * That is how a working scraper turns into a blocked one. Defaults to 1s; robots.txt
+ * Crawl-delay values (Hacker News asks for 30s, bitcoinerjobs for 1s) go in
+ * `fetch_hints.minIntervalMs` per source.
+ */
+const lastRequestAt = new Map<string, number>()
+
+async function politeDelay(url: string, minIntervalMs: number): Promise<void> {
+  if (minIntervalMs <= 0) return
+  let host: string
+  try {
+    host = new URL(url).host
+  } catch {
+    return
+  }
+  const previous = lastRequestAt.get(host)
+  const now = Date.now()
+  if (previous !== undefined) {
+    const wait = previous + minIntervalMs - now
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait))
+  }
+  lastRequestAt.set(host, Date.now())
+}
+
+export const DEFAULT_MIN_INTERVAL_MS = 1000
 
 export const MAX_BODY_BYTES = 12 * 1024 * 1024
 
@@ -44,6 +107,8 @@ export async function httpFetch(input: FetchRequest): Promise<FetchOutcome> {
   const started = Date.now()
   const headers = { ...DEFAULT_HEADERS, ...(input.headers ?? {}) }
   const timeoutMs = input.timeoutMs ?? 20_000
+
+  await politeDelay(input.url, input.minIntervalMs ?? DEFAULT_MIN_INTERVAL_MS)
 
   try {
     const response = await request(input.url, {
@@ -78,8 +143,8 @@ export async function httpFetch(input: FetchRequest): Promise<FetchOutcome> {
       chunks.push(buffer)
     }
 
-    const body = Buffer.concat(chunks).toString('utf8')
     const responseHeaders = normalizeHeaders(response.headers)
+    const body = decode(Buffer.concat(chunks), responseHeaders['content-encoding'])
     const fetchMs = Date.now() - started
 
     if (response.statusCode >= 500) {

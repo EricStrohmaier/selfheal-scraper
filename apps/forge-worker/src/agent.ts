@@ -11,7 +11,7 @@
 
 import { activeAdapter, fixturesForSource, logCompileStep, type Db, type SourceRow } from '@forge/db'
 
-import { costUsd, type ModelClient, type ModelMessage } from './model.ts'
+import { costUsd, type AgentTurn, type ModelClient } from './model.ts'
 import {
   COMPILE_SYSTEM_PROMPT,
   REPAIR_SYSTEM_PROMPT,
@@ -72,7 +72,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentOutcome> 
   }
 
   const system = kind === 'repair' ? REPAIR_SYSTEM_PROMPT : COMPILE_SYSTEM_PROMPT
-  const messages: ModelMessage[] = [{ role: 'user', content: await openingMessage(options) }]
+  const turns: AgentTurn[] = [{ role: 'user', text: await openingMessage(options) }]
 
   let tokensIn = 0
   let tokensOut = 0
@@ -81,7 +81,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentOutcome> 
   let lastText = ''
 
   while (iterations < cap) {
-    const response = await model.complete({ system, messages, tools: TOOL_DEFINITIONS })
+    const response = await model.complete({ system, turns, tools: TOOL_DEFINITIONS })
     tokensIn += response.usage.inputTokens
     tokensOut += response.usage.outputTokens
 
@@ -123,9 +123,9 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentOutcome> 
       })
     }
 
-    messages.push({ role: 'assistant', content: response.content })
+    turns.push({ role: 'assistant', content: response.content })
 
-    const results: unknown[] = []
+    const results: Array<{ toolUseId: string; output: unknown }> = []
     for (const toolUse of toolUses) {
       // The cap counts tool calls, and a parallel batch spends one per call. Stopping
       // mid-batch would leave the model without results it is waiting on, so the batch
@@ -137,16 +137,14 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentOutcome> 
       await logCompileStep(db, compileRunId, iterations, toolUse.name, toolUse.input, result.summary)
       log('tool', { n: iterations, tool: toolUse.name, ...result.summary })
 
-      results.push({
-        type: 'tool_result',
-        tool_use_id: toolUse.id,
-        content: JSON.stringify(result.output),
-      })
+      results.push({ toolUseId: toolUse.id, output: result.output })
     }
 
-    // All results go back in ONE user message. Splitting them teaches the model to stop
+    // One results turn per assistant turn, however many calls it made. Each provider
+    // decides how that lands on the wire — a single user message for Anthropic, flat
+    // function_call_output items for OpenAI — and splitting it teaches a model to stop
     // making parallel calls.
-    messages.push({ role: 'user', content: results })
+    turns.push({ role: 'tool_results', results })
 
     if (adapterId !== null) {
       return outcome({

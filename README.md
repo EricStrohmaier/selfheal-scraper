@@ -10,7 +10,8 @@ them when they break. The extractors run as plain code with no model in the loop
 Two tiers that never share a process:
 
 - **Forge** (`apps/forge-worker`) — expensive, rare. A model explores a site once and
-  writes extractor code, and repairs it when it breaks.
+  writes extractor code, and repairs it when it breaks. Anthropic or OpenAI; the loop
+  itself knows about neither.
 - **Runtime** (`apps/runtime-worker`) — cheap, constant. Executes stored code. **Never
   calls a model.** It does not even load the Anthropic SDK, which is what makes that rule
   enforced rather than merely stated.
@@ -50,8 +51,30 @@ ticks. `.github/workflows/` has the scrape cron, the forge cron, and CI.
 
 ```sh
 node apps/runtime-worker/src/main.ts --once
-node apps/forge-worker/src/main.ts --once
+node apps/forge-worker/src/main.ts --once                       # provider from whichever key is set
+node apps/forge-worker/src/main.ts --once --provider=openai --model=gpt-5.5
 ```
+
+### Environment
+
+| variable | what it does |
+|---|---|
+| `DATABASE_URL` | the only required one |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | whichever is set picks the provider when `--provider` is omitted |
+| `FORGE_MODEL_PRICING` | per-MTok rates for models the built-in table does not carry, e.g. `{"gpt-5.5":{"inputPerMTok":2,"outputPerMTok":8}}`. Without it `compile_run.cost_usd` stays null rather than guessing |
+| `CHROMIUM_EXECUTABLE_PATH` | use a pre-installed Chromium instead of playwright's pinned build |
+| `HTTPS_PROXY` / `NO_PROXY` | undici picks these up itself; the browser tier has to be told at launch, and is |
+
+### Swapping the model provider
+
+`ModelClient` in `apps/forge-worker/src/model.ts` is the whole boundary — one interface,
+a neutral `AgentTurn` transcript, and token counts. `anthropic-model.ts` and
+`openai-model.ts` are each about 120 lines and the agent loop imports neither.
+
+The transcript type is the part that earns its keep. Anthropic wants tool results inside a
+user message; the OpenAI Responses API wants them as sibling items in a flat array matched
+by `call_id`. `AgentTurn` has a `tool_results` case rather than pretending results are user
+text, so neither provider's shape leaks into the loop.
 
 ## Milestones
 
@@ -142,6 +165,18 @@ connecting them. The rule here is `fetch_hints.externalKeyField`, else the first
 `externalKey`, `id`, `key`. An item with no usable key is invalid rather than getting a
 synthetic one — hashing the payload would make every edit look like a new record.
 
+**11a. `undici.request` does not decompress.** Not a plan deviation, a bug worth naming:
+unlike `fetch`, it hands back the raw body. Sending `accept-encoding: gzip` and reading it
+as utf8 gives binary noise — the adapter extracts nothing, the challenge detector calls it
+blocked, and nothing says "this is compressed". Most of the web is gzipped, so this broke
+almost every real site while the one JSON endpoint under test happened to answer
+uncompressed. Found by pointing a live compile at Hacker News.
+
+**11b. Nothing paced itself.** The queue claims jobs as fast as it can, so a source with
+fifty item URLs would hit one host fifty times a second — how a working scraper becomes a
+blocked one. `httpFetch` now enforces a per-host minimum interval, default 1s, with
+`fetch_hints.minIntervalMs` for sites that ask for more (Hacker News asks for 30).
+
 **11. Fetch escalation is recorded, not silent.** `fetch_plan.tier` is a static choice in
 the plan. A site that served JSON to plain HTTP last week can start challenging it, so the
 http tier escalates to the browser on `blocked` only — never on a 404 or a reset, which
@@ -162,6 +197,24 @@ cache key; `unique (source_id, version)` is the identity.
 repairs produce a canary (section 8 step 4) but never says what happens to a first
 compile. There is no incumbent to protect, and it has already passed the gate, so it is
 promoted.
+
+## What has actually been run against live sites
+
+- **The runtime tier**, against `hn.algolia.com`: two consecutive runs, 59 records from 60
+  items (one story appears in two queries, so dedup by `external_key` is doing its job),
+  second run wrote nothing and emitted no change events.
+- **The agent tier**, against `news.ycombinator.com` with `gpt-5.5`: compiled a working
+  adapter from intent alone in 8 tool calls — fetch, probe, two more fetches, two
+  `query_dom` probes, `run_extract` (90 items, 90 valid), `save_adapter`. 38.4K input and
+  5.3K output tokens. The adapter it wrote anchors on `tr.athing[id]` and reaches each
+  row's score through `#score_<id>` — the id-first pattern the prompt teaches — and
+  correctly returns null for the one job posting with no score, author or link.
+- **The runtime tier running that agent-written adapter**: 30 records, all valid.
+
+Not exercised live: the browser tier. Chromium's HTTPS is reset by this sandbox's proxy
+whichever way it is configured, though it reaches the proxy over plain HTTP, so the
+`executablePath` and proxy plumbing is right and the tier is unproven. The repair loop has
+also only been run against a scripted model, not a real break on a real site.
 
 ## Notes carried over from an existing production scraper
 

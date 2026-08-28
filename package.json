@@ -6,7 +6,7 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "test": "node --test \"packages/core/test/*.test.ts\" \"packages/fetch/test/*.test.ts\" \"adapters/*/test/*.test.ts\"",
+    "test": "node --test \"packages/core/test/*.test.ts\" \"packages/fetch/test/*.test.ts\" \"adapters/*/test/*.test.ts\" \"apps/forge-worker/test/providers.test.ts\"",
     "test:db": "node --test --test-concurrency=1 \"packages/db/test/*.test.ts\" \"apps/*/test/*.test.ts\"",
     "test:all": "pnpm test && pnpm test:db",
     "typecheck": "tsc -p tsconfig.json --noEmit"
