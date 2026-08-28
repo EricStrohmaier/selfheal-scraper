@@ -3,85 +3,178 @@
 Forge — web extraction where an agent compiles deterministic extractors once and repairs
 them when they break. The extractors run as plain code with no model in the loop.
 
-`MASTER-PLAN.md` is the spec. `schema.sql` is the Postgres DDL. **M1 is the only milestone
-implemented.**
+`MASTER-PLAN.md` is the spec, `schema.sql` is the DDL, `migrations/` holds changes to it.
 
-## What M1 is
+## The shape of it
 
-M1 is the verification harness everything else depends on: the two boundaries that decide
-whether model-written extractor code is allowed to exist and what happens when it runs.
+Two tiers that never share a process:
+
+- **Forge** (`apps/forge-worker`) — expensive, rare. A model explores a site once and
+  writes extractor code, and repairs it when it breaks.
+- **Runtime** (`apps/runtime-worker`) — cheap, constant. Executes stored code. **Never
+  calls a model.** It does not even load the Anthropic SDK, which is what makes that rule
+  enforced rather than merely stated.
+
+The artifact between them is a row in Postgres holding executable JS, a fetch plan and a
+code hash. Adding a site is inserting a row; repair is inserting a row with `version + 1`;
+rollback is flipping a status column.
 
 ```
-packages/core/src/
-  contract.ts    FetchPlan, ExtractInput, Adapter — master plan section 5
-  validator.ts   acorn static rules, returns a violation list
-  sandbox.ts     node:vm execution, 2s CPU cap, LRU by code_hash
-  transpile.ts   code_ts -> code_js via esbuild, sha256 for code_hash
-  gate.ts        the promotion gate — section 5
-  fixtures.ts    reads a committed fixture corpus off disk
-
-adapters/hn-algolia/
-  extract.ts     one hand-written adapter (http tier, internal JSON endpoint)
-  source.json    output_schema, required_fields, fetch_plan — human-owned
-  fixtures/      3 gzipped real responses plus a manifest with golden output
+packages/
+  core/      contract types, acorn validator, node:vm sandbox, esbuild transpile,
+             promotion gate, health math
+  db/        drizzle schema over schema.sql, queue, record upsert + outbox, adapters
+  fetch/     undici http tier, playwright browser tier, bot-challenge detection
+apps/
+  runtime-worker/  scheduler tick + job claim loop + health + canary routing
+  forge-worker/    compile_run claim loop + the agent, its 5 tools and 2 prompts
+adapters/
+  hn-algolia/      hand-written, http tier, real captured fixtures
+  willhaben/       hand-written, browser tier, SYNTHETIC fixtures (see its README)
 ```
 
-Not built, deliberately: `packages/db`, `packages/fetch`, `apps/runtime-worker`,
-`apps/forge-worker`. Those are M2 onward.
+Postgres is the only infrastructure dependency. No Redis, no broker, no object store.
 
 ## Running it
 
 ```sh
 pnpm install
-pnpm test        # offline; no network, no database
+pnpm test         # offline: no network, no database
+pnpm test:db      # needs DATABASE_URL
 pnpm typecheck
 ```
 
-`pnpm test` proves the four things M1 is done when:
+Both workers have a `--once` mode that drains their queue and exits, which is what the
+scheduled GitHub Actions workflows use — no host to run, nothing costing money between
+ticks. `.github/workflows/` has the scrape cron, the forge cron, and CI.
 
-- the hand-written adapter extracts valid items from all 3 fixtures
-- the promotion gate passes for it
-- every static rule rejects its failing case
-- every listed sandbox escape is blocked, including `input.constructor.constructor`
+```sh
+node apps/runtime-worker/src/main.ts --once
+node apps/forge-worker/src/main.ts --once
+```
+
+## Milestones
+
+All five are implemented. M1's verification harness is the part everything else rests on.
+
+| | contains | proven by |
+|---|---|---|
+| M1 | contract, validator, sandbox, transpile, gate | a hand-written adapter passing 3 committed fixtures offline |
+| M2 | db, queue, record upsert, change feed, fetch tiers, runtime worker | the worker loop end to end against real Postgres |
+| M3 | run metrics, health window, degradation, canary routing | a broken selector trips degradation without corrupting records |
+| M4 | forge worker, compile agent, 5 tools, promotion gate | the agent loop against a scripted model, offline |
+| M5 | repair agent, canary promotion, rollback | a repair lands as a canary; an unrepairable break fails loudly |
+
+The plan says not to start M4 until M1-M3 have run unattended for a week against two real
+sites. That has not happened — the agent tier is built and tested but unproven against a
+live site, and `adapters/willhaben` ships synthetic fixtures. Treat M4/M5 as ready to try,
+not as validated.
 
 ## Where this deviates from the master plan
 
-Four places. Each one is explained in a comment at the point it happens.
+Each of these is explained in a comment where it happens.
 
-**1. The sandbox subtracts from the realm rather than injecting into it.** Section 7 says
-the context should contain "only `JSON, Object, Array, ...`". Read as injecting the host
-intrinsics, that is a complete escape on its own — host `Object.constructor` *is* the host
-`Function`:
+### The sandbox (section 7)
+
+**1. Subtract from the realm, never inject into it.** The plan says the context should
+hold "only `JSON, Object, Array, ...`". Read as injecting the *host* intrinsics, that is a
+complete escape — host `Object.constructor` *is* the host `Function`:
 
 ```js
 Object.constructor('return process.env.HOME')()   // -> /root
 ```
 
-A fresh `vm` context already has its own realm intrinsics, so the allowlist is applied by
-deleting everything not on it. `sandbox.test.ts` pins this.
+A fresh `vm` context already has its own intrinsics, so the allowlist is applied by
+deleting everything not on it.
 
-**2. `Object.create(null)` on `ExtractInput` is necessary but not sufficient.** Section 7
-credits it with blocking the escape, and it does block `input.constructor`. But `json` and
-`doc` are functions hanging off that object, and a *host* function leaks the host realm
-through `input.json.constructor` whether or not the object has a prototype. `ExtractInput`
-is therefore built inside the realm, and `json()` parses with the sandbox's own `JSON`.
+**2. `Object.create(null)` is necessary but not sufficient.** It blocks
+`input.constructor`, as the plan says. But `json` and `doc` are functions hanging off that
+object, and a *host* function leaks the host realm through `input.json.constructor`
+regardless of the prototype. `ExtractInput` is built inside the realm instead, and
+`json()` parses with the sandbox's own `JSON`.
 
-**3. The validator type-strips before it parses.** Section 5 says "parsed with acorn".
-acorn does not parse TypeScript, and `code_ts` is TypeScript. esbuild erases the types
-first and the rules run against that. Reported line numbers refer to the stripped source.
+**3. `Object.freeze(globalThis)` doesn't work** — V8 refuses to freeze a contextified
+global. Each surviving global is pinned non-writable and non-configurable individually.
 
-**4. Results are copied out of the realm.** Not addressed in the plan. Values returned by
-an adapter are sandbox-realm objects; they fail `instanceof` on the host and keep the
-context alive. They are JSON round-tripped at the boundary, which is the same normalization
-`runtime.record.payload` would apply anyway. The same problem affects thrown errors — even
-Node's own CPU-cap error arrives cross-realm — so every failure is re-thrown as a host
-`SandboxError` carrying a `kind` that maps onto `runtime.run.outcome`.
+**4. Values and errors crossing back out are normalized.** Not addressed in the plan.
+Sandbox-realm values fail `instanceof` on the host and keep the context alive; that is
+true even of Node's own CPU-cap error, so a worker doing `catch (e) { if (e instanceof
+Error) }` would mishandle its own timeouts.
 
-## Known limitation
-
-`node:vm` is a correctness boundary, not a security boundary — section 7 says so and it is
-still true here. `doc()` parses with linkedom on the host, so the `Document` it returns
+**Known limitation, unchanged:** `doc()` parses with linkedom on the host, so the Document
 carries host prototypes and `input.doc().constructor.constructor` reaches the host realm.
-The real fix is section 7's second mitigation: run extraction in a dedicated child process
-with no credentials and no network egress. That is not M1. `sandbox.test.ts` pins the hole
-so it fails loudly the day someone closes it.
+Section 7 says as much. The real fix is its second mitigation — a dedicated child process
+with no credentials and no network egress. A test pins the hole so it fails loudly if
+someone closes it without updating the plan.
+
+### The validator (section 5)
+
+**5. It type-strips before it parses.** acorn does not parse TypeScript and `code_ts` is
+TypeScript. One wrinkle worth knowing: esbuild drops an *unused* value import as if it
+were a type import, so `verbatimModuleSyntax` is needed or `import fs from 'node:fs'`
+vanishes before the validator sees it.
+
+### Runtime and health (sections 3, 6, 8)
+
+**6. `blocked` is a new run outcome, and the health window ignores it.** A bot challenge
+answers 200 with a real HTML body. Recorded as `empty`, three of them trip degradation and
+queue a repair the agent cannot possibly complete, because the adapter was never wrong —
+and the repair then works against fixtures that are themselves challenge pages. This came
+straight from reading a working production scraper, and it is the most valuable single
+change here.
+
+**7. Records can disappear.** `change_event.kind` gains `gone`, and `record` gains
+`is_active`/`gone_at`. Nothing in the plan represented a delisted listing or a filled job.
+
+**8. The absence sweep needs a completeness guard.** `run.complete` is false when a run
+stopped early, and the sweep refuses without it. A partial result set marking every
+unreached record gone is the one genuinely destructive failure mode in the system.
+
+**9. Two sections disagree about partial writes.** Section 6 says write "only for valid
+items"; section 3 says "nothing is written to `record` from a run whose items fail
+validation". Valid items are written, and the absence sweep additionally requires a clean
+run — which preserves section 3's actual guarantee ("a broken site produces a stale
+source, never a corrupted one") without discarding good rows over one bad one.
+
+**10. Nothing says how `record.external_key` is derived.** The schema requires
+`unique(source_id, external_key)` and adapters return opaque `unknown[]`, with nothing
+connecting them. The rule here is `fetch_hints.externalKeyField`, else the first of
+`externalKey`, `id`, `key`. An item with no usable key is invalid rather than getting a
+synthetic one — hashing the payload would make every edit look like a new record.
+
+**11. Fetch escalation is recorded, not silent.** `fetch_plan.tier` is a static choice in
+the plan. A site that served JSON to plain HTTP last week can start challenging it, so the
+http tier escalates to the browser on `blocked` only — never on a 404 or a reset, which
+will not read differently through a browser — and `run.tier_used`/`run.escalated` record
+what happened. A source that escalates every run has a compile problem, not a fetch one.
+
+### The gate and the agent (sections 5, 9)
+
+**12. One gate clause isn't machine-decidable.** "…or the compile run explains the diff" —
+code cannot adjudicate prose. The gate reports the mismatch as blocking and leaves the
+override to whoever reads the compile run.
+
+**13. `code_hash` is not a version identity.** `sha256(code_js)` with comments stripped
+means two `code_ts` versions differing only in comments collide. Correct for a script
+cache key; `unique (source_id, version)` is the identity.
+
+**14. A repair lands as a canary; a fresh compile goes active directly.** The plan says
+repairs produce a canary (section 8 step 4) but never says what happens to a first
+compile. There is no incumbent to protect, and it has already passed the gate, so it is
+promoted.
+
+## Notes carried over from an existing production scraper
+
+Reading `EricStrohmaier/willhaben-scraper` changed more of this design than reading the
+plan did. Beyond the `blocked` outcome and the absence sweep above:
+
+- **Anchor on the card's own id.** Find one anchor per repeating unit, read its id out of
+  its own `data-testid`, address every other field with a selector built from that id.
+  Nothing is then positional. This is now the worked example in the compile prompt.
+- **Locale-aware parsing has no error mode.** `€ 1.234,56` read the en-US way gives a
+  plausible wrong number, not an exception. It gets its own test.
+- **A next-page button stays in the DOM on the last page**, marked disabled. Following it
+  blindly walks in a circle.
+- **Consent walls hide the content**, so a fixture captured without dismissing one teaches
+  the agent to write selectors against a cookie dialog.
+- **Escalating fetch tiers**, cheapest first, only climbing on a soft failure.

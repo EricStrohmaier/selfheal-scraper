@@ -1,0 +1,16 @@
+{
+  "name": "@forge/forge-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.122.0",
+    "@forge/core": "workspace:*",
+    "@forge/db": "workspace:*",
+    "@forge/fetch": "workspace:*",
+    "linkedom": "^0.18.9"
+  },
+  "devDependencies": {
+    "drizzle-orm": "^0.38.3"
+  }
+}

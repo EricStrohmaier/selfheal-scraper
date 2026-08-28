@@ -1,0 +1,58 @@
+name: Forge
+
+# The agent tier. Expensive and rare, against the scrape workflow's cheap and constant —
+# so it runs on its own cadence and, more importantly, in its own process. The runtime
+# worker never loads the Anthropic SDK at all, which is how the "the runtime tier never
+# calls a model" rule is enforced rather than merely stated.
+#
+# A repair is queued by the runtime worker when a source's health window trips. This job
+# picks up whatever is queued; most runs will find nothing and exit in seconds.
+
+on:
+  schedule:
+    - cron: "30 6 * * *" # after the scrape run, so it sees today's failures
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Model to compile with"
+        type: choice
+        required: false
+        default: claude-opus-5
+        options: [claude-opus-5, claude-sonnet-5]
+
+concurrency:
+  # `compile_one_open` already guarantees one open run per source, but two workers would
+  # still burn model calls racing for the same queue.
+  group: forge
+  cancel-in-progress: false
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The compile agent explores a site it has never seen, so it needs the browser tier
+      # available — probe_network is how it finds the JSON endpoint that makes every
+      # subsequent run cheap, and that costs one browser launch once per source.
+      - name: Install Chromium
+        run: pnpm --filter @forge/fetch exec playwright install --with-deps chromium
+
+      - name: Run the forge worker
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node apps/forge-worker/src/main.ts --once --model=${{ inputs.model || 'claude-opus-5' }}
