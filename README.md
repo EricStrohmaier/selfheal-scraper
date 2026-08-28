@@ -85,13 +85,15 @@ All five are implemented. M1's verification harness is the part everything else 
 | M1 | contract, validator, sandbox, transpile, gate | a hand-written adapter passing 3 committed fixtures offline |
 | M2 | db, queue, record upsert, change feed, fetch tiers, runtime worker | the worker loop end to end against real Postgres |
 | M3 | run metrics, health window, degradation, canary routing | a broken selector trips degradation without corrupting records |
-| M4 | forge worker, compile agent, 5 tools, promotion gate | the agent loop against a scripted model, offline |
+| M4 | forge worker, compile agent, 5 tools, promotion gate | gpt-5.5 compiling a working Hacker News adapter from intent alone, live |
 | M5 | repair agent, canary promotion, rollback | a repair lands as a canary; an unrepairable break fails loudly |
 
 The plan says not to start M4 until M1-M3 have run unattended for a week against two real
-sites. That has not happened — the agent tier is built and tested but unproven against a
-live site, and `adapters/willhaben` ships synthetic fixtures. Treat M4/M5 as ready to try,
-not as validated.
+sites. That has not happened. One compile has succeeded live and the runtime tier has run
+against two real sites, but nothing has run *unattended over time*, `adapters/willhaben`
+ships synthetic fixtures, and the repair loop has only ever seen a scripted model. The
+next thing worth doing is letting the cron workflows run for a week and reading what the
+health window says, not adding features.
 
 ## Where this deviates from the master plan
 
