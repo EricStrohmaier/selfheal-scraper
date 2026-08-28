@@ -1,7 +1,9 @@
 {
   "compilerOptions": {
     "target": "ES2023",
-    "lib": ["ES2023"],
+    "lib": [
+      "ES2023"
+    ],
     "module": "NodeNext",
     "moduleResolution": "nodenext",
     "allowImportingTsExtensions": true,
@@ -14,7 +16,15 @@
     "noImplicitOverride": true,
     "exactOptionalPropertyTypes": false,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts", "adapters/*/**/*.ts"]
+  "include": [
+    "packages/*/src/**/*.ts",
+    "packages/*/test/**/*.ts",
+    "adapters/*/**/*.ts",
+    "apps/*/src/**/*.ts",
+    "apps/*/test/**/*.ts"
+  ]
 }

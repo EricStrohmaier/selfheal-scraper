@@ -1,0 +1,12 @@
+{
+  "name": "@forge/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@forge/core": "workspace:*",
+    "drizzle-orm": "^0.38.3",
+    "postgres": "^3.4.5"
+  }
+}

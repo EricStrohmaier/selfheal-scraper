@@ -48,3 +48,18 @@ export {
   type GateInput,
   type GateResult,
 } from './gate.ts'
+
+export {
+  CANARY_RUNS_REQUIRED,
+  CANARY_YIELD_TOLERANCE,
+  HEALTH_WINDOW,
+  THRESHOLDS,
+  assessCanary,
+  assessHealth,
+  type CanaryVerdict,
+  type HealthReport,
+  type HealthTrip,
+  type HealthTripRule,
+  type RunOutcome,
+  type RunSummary,
+} from './health.ts'

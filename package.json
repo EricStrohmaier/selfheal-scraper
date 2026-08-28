@@ -2,9 +2,13 @@
   "name": "forge",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.18" },
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
-    "test": "node --test --experimental-test-module-mocks=false \"packages/core/test/*.test.ts\" \"adapters/*/test/*.test.ts\"",
+    "test": "node --test \"packages/core/test/*.test.ts\" \"packages/fetch/test/*.test.ts\" \"adapters/*/test/*.test.ts\"",
+    "test:db": "node --test \"packages/db/test/*.test.ts\" \"apps/*/test/*.test.ts\"",
+    "test:all": "pnpm test && pnpm test:db",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

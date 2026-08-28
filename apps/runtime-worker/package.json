@@ -1,0 +1,11 @@
+{
+  "name": "@forge/runtime-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@forge/core": "workspace:*",
+    "@forge/db": "workspace:*",
+    "@forge/fetch": "workspace:*"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "@forge/fetch",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@forge/core": "workspace:*",
+    "undici": "^7.2.0"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.49.1"
+  }
+}
