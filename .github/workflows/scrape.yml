@@ -1,0 +1,58 @@
+name: Scrape
+
+# The runtime worker has a `--once` mode for exactly this: tick the scheduler, drain the
+# queue, exit. A cron-triggered run costs nothing between ticks and needs no host, which
+# suits a system whose sources are on a daily cadence. Switch to the long-lived
+# `runForever` mode when cadences drop below the useful floor of GitHub's scheduler
+# (roughly 5 minutes, and late under load).
+#
+# Only Postgres is required. There is no broker, no object store and no Redis to stand up.
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      browser:
+        description: "Install Chromium for browser-tier sources"
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  # Never let two scheduled runs overlap. The queue tolerates it — FOR UPDATE SKIP LOCKED
+  # is there precisely so several workers can share it — but overlapping runs double the
+  # request rate against every source, which is how you get challenged.
+  group: scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Skipped by default: playwright is a ~300MB install and most sources should be on
+      # the http tier. If this is needed every run, that is a signal the compile agent is
+      # not finding JSON endpoints (master plan section 9, objective 2).
+      - name: Install Chromium
+        if: inputs.browser
+        run: pnpm --filter @forge/fetch exec playwright install --with-deps chromium
+
+      - name: Run the worker
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node apps/runtime-worker/src/main.ts --once

@@ -29,9 +29,12 @@ export function connect(options: ConnectOptions = {}): Db {
     connection: { statement_timeout: options.statementTimeoutMs ?? 30_000 },
     onnotice: () => {},
     types: {
-      // bigserial ids come back as strings by default, which then compare wrong
-      // against numbers. Everything here fits comfortably in a double.
-      bigint: postgres.BigInt,
+      // postgres.js hands int8 back as a string by default, and `postgres.BigInt` hands
+      // it back as a BigInt — which then throws the moment it meets a Number
+      // (`job.id % 100` in the canary router, for one). Every int8 here is a bigserial
+      // surrogate key, so parse them as Numbers to match the declared row types.
+      // Precision is exact below 2^53; this system would need ~9e15 rows to reach it.
+      bigint: { to: 20, from: [20], serialize: String, parse: Number },
     },
   })
 

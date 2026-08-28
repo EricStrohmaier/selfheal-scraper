@@ -85,6 +85,17 @@ export type GateResult = {
   }
 }
 
+/**
+ * The one place `output_schema` is turned into a validator.
+ *
+ * The gate and the runtime worker have to agree exactly on what "valid" means — an
+ * adapter that passes the gate and then fails validation in production would be a
+ * promotion the system cannot honour. Shared function, not a shared convention.
+ */
+export function createValidator(outputSchema: Record<string, unknown>): ValidateFunction {
+  return compileSchema(outputSchema)
+}
+
 function compileSchema(outputSchema: Record<string, unknown>): ValidateFunction {
   // strict:false — `output_schema` is human-written and may carry annotations ajv would
   // otherwise reject. allErrors so the agent gets the full picture in one pass.
@@ -120,7 +131,7 @@ function sortKeys(value: unknown): unknown {
  * shows up as 0.5 rather than disappearing — which is the failure mode section 8's
  * `null_rate` trip is built to catch.
  */
-function fieldNullRates(items: unknown[], requiredFields: string[]): Record<string, number> {
+export function fieldNullRates(items: unknown[], requiredFields: string[]): Record<string, number> {
   const keys = new Set<string>(requiredFields)
   for (const item of items) {
     if (item !== null && typeof item === 'object' && !Array.isArray(item)) {

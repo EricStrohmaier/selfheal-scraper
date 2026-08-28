@@ -7,5 +7,8 @@
     "@forge/core": "workspace:*",
     "@forge/db": "workspace:*",
     "@forge/fetch": "workspace:*"
+  },
+  "devDependencies": {
+    "drizzle-orm": "^0.38.3"
   }
 }

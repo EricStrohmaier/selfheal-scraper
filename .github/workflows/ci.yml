@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # The offline suite needs nothing. The integration suite needs a real Postgres —
+    # the queue claim, the upsert-plus-outbox CTE and the partial unique indexes are all
+    # things only Postgres can tell you the truth about, so they are not mocked.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: forge
+          POSTGRES_PASSWORD: forge
+          POSTGRES_DB: forge
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # No network, no database. If this ever needs either, something has leaked out of
+      # the runtime tier and into the test suite.
+      - name: Offline tests
+        run: pnpm test
+
+      - name: Database tests
+        env:
+          DATABASE_URL: postgres://forge:forge@localhost:5432/forge
+        run: pnpm test:db

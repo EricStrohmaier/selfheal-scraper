@@ -32,6 +32,10 @@ importers:
       '@forge/fetch':
         specifier: workspace:*
         version: link:../../packages/fetch
+    devDependencies:
+      drizzle-orm:
+        specifier: ^0.38.3
+        version: 0.38.4(postgres@3.4.9)
 
   packages/core:
     dependencies:

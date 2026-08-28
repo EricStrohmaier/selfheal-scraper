@@ -39,6 +39,8 @@ export { loadFixtures, type FixtureManifestEntry } from './fixtures.ts'
 
 export {
   MIN_FIXTURES,
+  createValidator,
+  fieldNullRates,
   runGate,
   type FixtureOutcome,
   type GateFailure,
