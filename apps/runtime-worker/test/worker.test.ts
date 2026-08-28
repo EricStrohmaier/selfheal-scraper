@@ -195,12 +195,19 @@ describe('pipeline: the happy path', { skip }, () => {
     assert.equal((await readChangeEvents(db)).length, 1)
   })
 
-  test('a record that disappears is swept and reported gone', async () => {
+  /**
+   * processJob deliberately never sweeps. One job's keys are not the source's whole
+   * result set when the source has several entry jobs, so the sweep is a source-level
+   * decision the worker makes after the queue drains.
+   */
+  test('processJob never sweeps, whatever disappeared', async () => {
     await claimAndProcess(body([{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }]))
     const second = await claimAndProcess(body([{ id: 'a', title: 'A' }]))
-    assert.equal(second.swept, 1)
-    const events = await readChangeEvents(db)
-    assert.equal(events.at(-1)?.kind, 'gone')
+    assert.equal(second.swept, 0)
+    const rows = await db.execute<{ n: number }>(
+      sql`select count(*)::int as n from runtime.record where is_active`,
+    )
+    assert.equal(rows[0]?.n, 2)
   })
 
   test('the run row carries the tier and timings', async () => {
@@ -443,6 +450,107 @@ describe('the worker loop', { skip }, () => {
   test('runOnce is a no-op when nothing is due', async () => {
     await runOnce(db, { fetcher: fetcherFor(body([{ id: 'a', title: 'A' }])) })
     assert.deepEqual(await runOnce(db, { fetcher: fetcherFor(body([])) }), [])
+  })
+
+  test('a record that disappears is swept once the source drains', async () => {
+    await runOnce(db, { fetcher: fetcherFor(body([{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }])) })
+    await db.execute(sql`update runtime.run set created_at = created_at - interval '2 days'`)
+    const reports = await runOnce(db, { fetcher: fetcherFor(body([{ id: 'a', title: 'A' }])) })
+
+    assert.equal(reports[0]?.swept, 1)
+    const events = await readChangeEvents(db)
+    assert.equal(events.at(-1)?.kind, 'gone')
+    const rows = await db.execute<{ n: number }>(
+      sql`select count(*)::int as n from runtime.record where is_active`,
+    )
+    assert.equal(rows[0]?.n, 1)
+  })
+
+  /**
+   * The case the live run exposed: a source with several entry jobs has its result set
+   * spread across them. Sweeping after each job would mark the previous job's records
+   * gone, and the next job would do the same to those.
+   */
+  test('a source with several entry jobs is swept once, not once per job', async () => {
+    await db.execute(sql`
+      update forge.source
+         set fetch_hints = '{"entryKeys":["one","two","three"]}'::jsonb
+       where id = ${sourceId}::uuid
+    `)
+    await db.execute(sql`
+      update forge.adapter
+         set fetch_plan = '{"tier":"http","urlTemplate":"https://example.test/{key}"}'::jsonb
+    `)
+
+    // Each job returns a different record. None of them is the whole result set.
+    let call = 0
+    const perJob = async () => {
+      const items = [{ id: `item-${++call}`, title: `Item ${call}` }]
+      const payload = body(items)
+      return {
+        ok: true as const, outcome: 'ok' as const, tier: 'http' as const, status: 200,
+        fetchMs: 1, bytes: payload.length, body: payload,
+        headers: { 'content-type': 'application/json' }, escalated: false,
+      }
+    }
+
+    const reports = await runOnce(db, { fetcher: perJob })
+    assert.equal(reports.length, 3)
+    const rows = await db.execute<{ n: number }>(
+      sql`select count(*)::int as n from runtime.record where is_active`,
+    )
+    assert.equal(rows[0]?.n, 3, 'all three jobs contributed records and none swept the others')
+    assert.equal(reports.reduce((n, r) => n + r.swept, 0), 0)
+  })
+
+  test('one failed job stops the whole source being swept', async () => {
+    await runOnce(db, { fetcher: fetcherFor(body([{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }])) })
+    await db.execute(sql`update runtime.run set created_at = created_at - interval '2 days'`)
+
+    // The fetch is blocked, so the result set is unknown, not empty.
+    const reports = await runOnce(db, {
+      fetcher: fetcherFor('x', { ok: false, outcome: 'blocked', body: '<html>Just a moment</html>' }),
+    })
+    assert.equal(reports[0]?.swept, 0)
+    const rows = await db.execute<{ n: number }>(
+      sql`select count(*)::int as n from runtime.record where is_active`,
+    )
+    assert.equal(rows[0]?.n, 2, 'records survive a blocked run')
+  })
+
+  test('the tick expands fetch_hints.entryKeys into one job each', async () => {
+    await db.execute(sql`
+      update forge.source set fetch_hints = '{"entryKeys":["a","b"]}'::jsonb where id = ${sourceId}::uuid
+    `)
+    await db.execute(sql`
+      update forge.adapter set fetch_plan = '{"tier":"http","urlTemplate":"https://example.test/{key}"}'::jsonb
+    `)
+    assert.equal((await tick(db)).queued, 2)
+    const rows = await db.execute<{ url: string; external_key: string }>(
+      sql`select url, external_key from runtime.job order by external_key`,
+    )
+    assert.deepEqual(rows.map((r) => r.url), ['https://example.test/a', 'https://example.test/b'])
+  })
+
+  /** entry_url is where the compile agent starts, not what the runtime fetches. */
+  test('the tick fetches the fetch_plan, never the entry_url', async () => {
+    await db.execute(sql`
+      update forge.adapter set fetch_plan = '{"tier":"http","urlTemplate":"https://api.example.test/v2"}'::jsonb
+    `)
+    await tick(db)
+    const rows = await db.execute<{ url: string }>(sql`select url from runtime.job`)
+    assert.equal(rows[0]?.url, 'https://api.example.test/v2')
+    assert.notEqual(rows[0]?.url, 'https://example.test/list')
+  })
+
+  test('a {key} template with no entryKeys is reported, not silently skipped', async () => {
+    await db.execute(sql`
+      update forge.adapter set fetch_plan = '{"tier":"http","urlTemplate":"https://example.test/{key}"}'::jsonb
+    `)
+    const messages: string[] = []
+    const result = await tick(db, { log: (m) => messages.push(m) })
+    assert.equal(result.queued, 0)
+    assert.ok(messages.some((m) => m.includes('misconfigured')))
   })
 
   test('an aborted signal stops the drain', async () => {

@@ -21,6 +21,7 @@ import {
   finishJob,
   getSource,
   reclaimStaleJobs,
+  sweepStale,
   type Db,
   type SourceRow,
 } from '@forge/db'
@@ -47,9 +48,17 @@ export type TickResult = { queued: number; sources: number }
 /**
  * Scheduler tick: enqueue work for every source whose cadence is due.
  *
- * One job per source per tick, against the source's entry URL. Multi-page and per-item
- * jobs come from an adapter's `discover()` output, which the caller enqueues; the tick
- * itself stays trivial because it runs on every loop iteration.
+ * The URL comes from `adapter.fetch_plan.urlTemplate`, never from `source.entry_url`.
+ * Those are different things and conflating them is a live bug: `entry_url` is the
+ * human-facing page the *compile agent* starts exploring from, while `urlTemplate` is
+ * what the adapter was actually compiled against — usually the JSON endpoint the agent
+ * found behind that page. Fetching `entry_url` at runtime hands an adapter that expects
+ * JSON a page of HTML, which fails as `exec_error` and reads like a broken adapter.
+ *
+ * When `urlTemplate` carries a `{key}`, the source has to say which keys the tick should
+ * expand — `fetch_hints.entryKeys`. The master plan does not cover this: it defines the
+ * template and it defines the tick, but never says where the entry job's key comes from.
+ * Per-item jobs beyond these come from an adapter's `discover()` output.
  */
 export async function tick(db: Db, options: WorkerOptions = {}): Promise<TickResult> {
   const log = options.log ?? (() => {})
@@ -62,9 +71,28 @@ export async function tick(db: Db, options: WorkerOptions = {}): Promise<TickRes
       log('source is due but has no adapter', { source: source.key })
       continue
     }
-    const url = source.entry_url || resolveUrl(adapter.fetch_plan, source.key)
-    const id = await enqueue(db, { sourceId: source.id, url, externalKey: source.key })
-    if (id !== null) queued++
+
+    const template = adapter.fetch_plan.urlTemplate
+    const hints = source.fetch_hints as { entryKeys?: unknown }
+    const entryKeys = Array.isArray(hints.entryKeys) ? hints.entryKeys.map(String) : []
+
+    if (template.includes('{key}') && entryKeys.length === 0) {
+      log('source is misconfigured: urlTemplate needs {key} but fetch_hints.entryKeys is empty', {
+        source: source.key,
+        template,
+      })
+      continue
+    }
+
+    const keys = entryKeys.length > 0 ? entryKeys : [source.key]
+    for (const key of keys) {
+      const id = await enqueue(db, {
+        sourceId: source.id,
+        url: resolveUrl(adapter.fetch_plan, key),
+        externalKey: key,
+      })
+      if (id !== null) queued++
+    }
   }
 
   if (queued > 0) log('scheduler tick', { sources: sources.length, queued })
@@ -73,6 +101,7 @@ export async function tick(db: Db, options: WorkerOptions = {}): Promise<TickRes
 
 export type JobReport = {
   jobId: number
+  sourceId: string
   sourceKey: string
   outcome: string
   items: number
@@ -129,6 +158,7 @@ export async function step(db: Db, options: WorkerOptions = {}): Promise<JobRepo
 
     return {
       jobId: job.id,
+      sourceId: source.id,
       sourceKey: source.key,
       outcome: result.outcome,
       items: result.items,
@@ -142,6 +172,7 @@ export async function step(db: Db, options: WorkerOptions = {}): Promise<JobRepo
     await failJob(db, job.id, message)
     return {
       jobId: job.id,
+      sourceId: job.source_id,
       sourceKey: source?.key ?? String(job.source_id),
       outcome: 'exec_error',
       items: 0,
@@ -152,9 +183,56 @@ export async function step(db: Db, options: WorkerOptions = {}): Promise<JobRepo
   }
 }
 
+/**
+ * Sweep every source whose jobs all succeeded this tick.
+ *
+ * A source is only swept when *every* job it had this tick came back clean. One failed
+ * or blocked job means the result set is incomplete, and an incomplete result set marking
+ * records gone is the one genuinely destructive failure mode in the system.
+ *
+ * Returns the number of records marked gone, per source key.
+ */
+export async function sweepSources(
+  db: Db,
+  reports: JobReport[],
+  since: Date,
+  options: WorkerOptions = {},
+): Promise<Record<string, number>> {
+  const log = options.log ?? (() => {})
+  const bySource = new Map<string, { key: string; complete: boolean }>()
+
+  for (const report of reports) {
+    const clean = report.outcome === 'ok'
+    const existing = bySource.get(report.sourceId)
+    if (existing) existing.complete &&= clean
+    else bySource.set(report.sourceId, { key: report.sourceKey, complete: clean })
+  }
+
+  const swept: Record<string, number> = {}
+  for (const [sourceId, info] of bySource) {
+    if (!info.complete) {
+      log('skipping absence sweep — not every job came back clean', { source: info.key })
+      continue
+    }
+    const source = await getSource(db, sourceId)
+    // A degraded source has stopped writing records, so its last_seen timestamps are
+    // stale by design. Sweeping it would retire the entire source.
+    if (!source || source.state !== 'active') continue
+
+    const count = await sweepStale(db, sourceId, since, { complete: true })
+    if (count > 0) {
+      swept[info.key] = count
+      log('records marked gone', { source: info.key, count })
+    }
+  }
+  return swept
+}
+
 /** Tick once, then drain the queue. This is the shape a scheduled CI run wants. */
 export async function runOnce(db: Db, options: WorkerOptions = {}): Promise<JobReport[]> {
   const maxJobs = options.maxJobs ?? 500
+  // Taken before any work: anything not touched after this point was not in a response.
+  const tickStart = new Date()
   await reclaimStaleJobs(db)
   await tick(db, options)
 
@@ -164,6 +242,15 @@ export async function runOnce(db: Db, options: WorkerOptions = {}): Promise<JobR
     const report = await step(db, options)
     if (!report) break
     reports.push(report)
+  }
+
+  // Only sweep on a full drain. An aborted run has not seen the whole result set.
+  if (!options.signal?.aborted) {
+    const swept = await sweepSources(db, reports, tickStart, options)
+    for (const report of reports) {
+      report.swept = swept[report.sourceKey] ?? 0
+      swept[report.sourceKey] = 0 // attribute the count once, not once per job
+    }
   }
   return reports
 }
@@ -175,14 +262,25 @@ export async function runForever(db: Db, options: WorkerOptions = {}): Promise<v
 
   while (!options.signal?.aborted) {
     if (sinceReclaim++ % 60 === 0) await reclaimStaleJobs(db)
+
+    const tickStart = new Date()
     await tick(db, options)
 
-    const report = await step(db, options)
-    if (report) {
+    const reports: JobReport[] = []
+    for (;;) {
+      const report = await step(db, options)
+      if (!report) break
       log('job done', { ...report })
-      continue
+      reports.push(report)
+      if (options.signal?.aborted) break
     }
-    await sleep(idleMs, options.signal)
+
+    // Drain first, then sweep: the same reason runOnce does. A source's result set is
+    // spread across all of its jobs, so it is only whole once the queue is empty.
+    if (reports.length > 0 && !options.signal?.aborted) {
+      await sweepSources(db, reports, tickStart, options)
+    }
+    if (reports.length === 0) await sleep(idleMs, options.signal)
   }
 }
 

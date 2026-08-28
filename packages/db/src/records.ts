@@ -142,6 +142,43 @@ export async function sweepAbsent(
   return rows.length
 }
 
+/**
+ * Mark records this source has not been seen in since `since` as gone.
+ *
+ * The key-based `sweepAbsent` above is only correct when the caller holds the source's
+ * *entire* result set. A source with several entry jobs — three search queries, five
+ * cities — has its result set spread across several runs, and sweeping after each one
+ * marks the previous job's records gone, then the next job marks those gone in turn.
+ *
+ * Sweeping by staleness instead needs no key list: `writeRecords` refreshes `last_seen`
+ * on every record it sees, including unchanged ones, so anything still carrying a
+ * timestamp from before this tick genuinely was not in any of the source's responses.
+ * The `complete` guard is unchanged and still load-bearing.
+ */
+export async function sweepStale(
+  db: Db,
+  sourceId: string,
+  since: Date,
+  options: { complete: boolean },
+): Promise<number> {
+  if (!options.complete) return 0
+
+  const rows = await db.execute<{ id: number }>(sql`
+    with gone as (
+      update runtime.record
+         set is_active = false, gone_at = now()
+       where source_id = ${sourceId}::uuid
+         and is_active
+         and last_seen < ${since.toISOString()}::timestamptz
+      returning id, source_id
+    )
+    insert into runtime.change_event (record_id, source_id, kind)
+    select id, source_id, 'gone' from gone
+    returning id
+  `)
+  return rows.length
+}
+
 export type ChangeEventRow = {
   id: number
   record_id: number

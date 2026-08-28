@@ -7,6 +7,16 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@forge/core':
+        specifier: workspace:*
+        version: link:packages/core
+      '@forge/db':
+        specifier: workspace:*
+        version: link:packages/db
+      '@forge/fetch':
+        specifier: workspace:*
+        version: link:packages/fetch
     devDependencies:
       '@types/node':
         specifier: ^22.10.2

@@ -21,7 +21,6 @@ import {
   canaryAdapter,
   captureFixture,
   recordRun,
-  sweepAbsent,
   writeRecords,
   type AdapterRow,
   type Db,
@@ -53,6 +52,7 @@ export type ProcessJobResult = {
   items: number
   validItems: number
   written: { inserted: number; updated: number; unchanged: number }
+  /** always 0 — the worker sweeps per source, not per job */
   swept: number
   adapter: AdapterRow
   canary: boolean
@@ -250,11 +250,11 @@ export async function processJob(
       ? empty
       : await writeRecords(db, source.id, null, valid)
 
+  // The absence sweep is deliberately NOT done here. A source can have several entry
+  // jobs, and one job's keys are not the source's whole result set — sweeping per job
+  // would mark the previous job's records gone, then the next job would do the same to
+  // those. The worker sweeps once per source after its queue drains; see worker.ts.
   const complete = outcome === 'ok' && fetched.ok
-  const swept =
-    degraded || isCanary || !complete
-      ? 0
-      : await sweepAbsent(db, source.id, valid.map((v) => v.externalKey), { complete })
 
   const runId = await recordRun(db, {
     ...base,
@@ -272,5 +272,5 @@ export async function processJob(
     error: invalidCount > 0 ? `${invalidCount} of ${items.length} items failed validation` : null,
   })
 
-  return { runId, outcome, items: items.length, validItems: valid.length, written, swept, adapter, canary: isCanary }
+  return { runId, outcome, items: items.length, validItems: valid.length, written, swept: 0, adapter, canary: isCanary }
 }

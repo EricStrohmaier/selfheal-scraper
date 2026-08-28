@@ -20,6 +20,7 @@ export {
   markConsumed,
   readChangeEvents,
   sweepAbsent,
+  sweepStale,
   writeRecords,
   type ChangeEventRow,
   type RecordInput,
