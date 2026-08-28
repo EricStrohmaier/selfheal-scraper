@@ -1,0 +1,38 @@
+[
+  {
+    "name": "synthetic-page-1",
+    "url": "https://www.willhaben.at/iad/immobilien/mietwohnungen/tirol/innsbruck?rows=90",
+    "tier": "browser",
+    "statusCode": 200,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "bodyFile": "synthetic-page-1.body.gz",
+    "synthetic": true,
+    "expected": null
+  },
+  {
+    "name": "synthetic-page-2",
+    "url": "https://www.willhaben.at/iad/immobilien/mietwohnungen/tirol/innsbruck?rows=90&page=2",
+    "tier": "browser",
+    "statusCode": 200,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "bodyFile": "synthetic-page-2.body.gz",
+    "synthetic": true,
+    "expected": null
+  },
+  {
+    "name": "synthetic-sparse",
+    "url": "https://www.willhaben.at/iad/immobilien/mietwohnungen/tirol/kufstein?rows=90",
+    "tier": "browser",
+    "statusCode": 200,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "bodyFile": "synthetic-sparse.body.gz",
+    "synthetic": true,
+    "expected": null
+  }
+]

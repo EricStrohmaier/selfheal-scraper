@@ -1,0 +1,7 @@
+{
+  "name": "@forge/adapter-willhaben",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": { "@forge/core": "workspace:*" }
+}

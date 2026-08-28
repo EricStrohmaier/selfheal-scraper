@@ -21,6 +21,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/core
 
+  adapters/willhaben:
+    dependencies:
+      '@forge/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+
   apps/runtime-worker:
     dependencies:
       '@forge/core':

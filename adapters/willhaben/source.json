@@ -1,0 +1,49 @@
+{
+  "key": "willhaben/immo-search",
+  "intent": "Rental property listings from a willhaben property search: title, price, size, rooms, address and who is letting it.",
+  "entry_url": "https://www.willhaben.at/iad/immobilien/mietwohnungen/tirol/innsbruck",
+  "url_pattern": "^https://www\\.willhaben\\.at/iad/immobilien/.+/[0-9]+$",
+  "cadence": "1 day",
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["id", "url", "title", "features"],
+    "properties": {
+      "id": { "type": "string", "pattern": "^[0-9]+$" },
+      "url": { "type": "string", "pattern": "^https://www\\.willhaben\\.at/" },
+      "title": { "type": "string", "minLength": 1 },
+      "price": {
+        "type": ["number", "null"],
+        "minimum": 0,
+        "description": "null for 'Preis auf Anfrage' and for ranges; priceText keeps the original"
+      },
+      "priceText": { "type": ["string", "null"] },
+      "sizeM2": { "type": ["number", "null"], "minimum": 0 },
+      "rooms": {
+        "type": ["number", "null"],
+        "minimum": 0,
+        "description": "fractional room counts are normal in Austrian listings"
+      },
+      "features": { "type": "array", "items": { "type": "string" } },
+      "address": { "type": ["string", "null"] },
+      "postalCode": { "type": ["string", "null"], "pattern": "^[0-9]{4}$" },
+      "district": { "type": ["string", "null"] },
+      "seller": { "type": ["string", "null"] },
+      "imageUrl": { "type": ["string", "null"] }
+    }
+  },
+  "required_fields": ["id", "url", "title"],
+  "fetch_plan": {
+    "tier": "browser",
+    "urlTemplate": "https://www.willhaben.at/iad/immobilien/mietwohnungen/tirol/innsbruck?rows=90",
+    "method": "GET",
+    "waitFor": "[data-testid^=\"search-result-entry-header-\"]"
+  },
+  "fetch_hints": {
+    "locale": "de-AT",
+    "headers": { "accept-language": "de-AT,de;q=0.9,en;q=0.8" },
+    "consentSelectors": ["#didomi-notice-agree-button"],
+    "autoScroll": true,
+    "externalKeyField": "id"
+  }
+}
