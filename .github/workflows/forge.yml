@@ -9,8 +9,11 @@ name: Forge
 # picks up whatever is queued; most runs will find nothing and exit in seconds.
 
 on:
-  schedule:
-    - cron: "30 6 * * *" # after the scrape run, so it sees today's failures
+# PAUSED — all automatic triggers are commented out. Nothing fires on its own; the
+# workflow can still be started by hand from the Actions tab. To resume, uncomment the
+# block below.
+#  schedule:
+#    - cron: "30 6 * * *" # after the scrape run, so it sees today's failures
   workflow_dispatch:
     inputs:
       provider:

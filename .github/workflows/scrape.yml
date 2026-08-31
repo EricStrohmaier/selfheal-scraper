@@ -9,8 +9,11 @@ name: Scrape
 # Only Postgres is required. There is no broker, no object store and no Redis to stand up.
 
 on:
-  schedule:
-    - cron: "0 6 * * *"
+# PAUSED — all automatic triggers are commented out. Nothing fires on its own; the
+# workflow can still be started by hand from the Actions tab. To resume, uncomment the
+# block below.
+#  schedule:
+#    - cron: "0 6 * * *"
   workflow_dispatch:
     inputs:
       browser:

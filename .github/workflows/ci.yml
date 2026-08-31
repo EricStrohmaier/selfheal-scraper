@@ -1,9 +1,13 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+# PAUSED — all automatic triggers are commented out. Nothing fires on its own; the
+# workflow can still be started by hand from the Actions tab. To resume, uncomment the
+# block below.
+#  push:
+#    branches: [main]
+#  pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
